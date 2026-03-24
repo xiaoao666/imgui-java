@@ -1,0 +1,9 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Base.Theme.JavaImgui" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="colorPrimary">@color/purple_500</item>
+        <item name="colorAccent">@color/teal_200</item>
+    </style>
+
+    <style name="Theme.JavaImgui" parent="Base.Theme.JavaImgui" />
+</resources>
