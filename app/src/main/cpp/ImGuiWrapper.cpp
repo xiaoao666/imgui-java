@@ -25,7 +25,6 @@ static ANativeWindow *g_Window = nullptr;
 static bool g_Initialized = false;
 static bool show_demo_window = true;
 static bool show_another_window = false;
-static ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 static ImGuiIO *g_io = nullptr;
 
 
@@ -45,25 +44,6 @@ char* ConvertJStringToCString(JNIEnv* env, jstring jstr) {
     return result;
 }
 
-// 更新输入文本
-extern "C" JNIEXPORT void JNICALL
-Java_com_xa_JavaImgui_NativeMethod_UpdateInputText(JNIEnv *env, jclass clazz, jstring text) {
-    LOGI("UpdateInputText called with text: %s", env->GetStringUTFChars(text, nullptr));
-    const char* ctext = ConvertJStringToCString(env, text);
-    if (g_Initialized && g_io) {
-        g_io->AddInputCharactersUTF8(ctext);
-    }
-}
-
-// 删除输入文本
-extern "C" JNIEXPORT void JNICALL
-Java_com_xa_JavaImgui_NativeMethod_DeleteInputText(JNIEnv *env, jclass clazz) {
-    if (g_Initialized && g_io) {
-        g_io->AddKeyEvent(ImGuiKey_Backspace, true);
-        usleep(10000);
-        g_io->AddKeyEvent(ImGuiKey_Backspace, false);
-    }
-}
 
 void setKeyboardServiceClass() {
     JNIEnv *env = nullptr;
@@ -79,7 +59,12 @@ void setKeyboardServiceClass() {
     }
     myGLSurfaceViewClass = (jclass) env->NewGlobalRef(cls);
     LOGI("MyGLSurfaceView class: %p", myGLSurfaceViewClass);
+    // 缓存方法 (注意签名改为了 ()V，不需要传字符串了)
+    g_showInputUIMethod = env->GetStaticMethodID(myGLSurfaceViewClass, "showInputUI", "()V");
+    g_hideInputUIMethod = env->GetStaticMethodID(myGLSurfaceViewClass, "hideInputUI", "()V");
 }
+
+
 
 extern "C"
 JNIEXPORT void JNICALL
@@ -151,27 +136,7 @@ Java_com_xa_JavaImgui_NativeMethod_onSurfaceChanged(JNIEnv *env, jclass clazz, j
     io.DisplaySize = ImVec2((float) width, (float) height);
 }
 
-extern "C"
-JNIEXPORT void JNICALL
-Java_com_xa_JavaImgui_NativeMethod_onDrawFrame(JNIEnv *env, jclass clazz, jobject gl) {
-    // TODO: implement onDrawFrame()
 
-    if (!g_Initialized || ImGui::GetCurrentContext() == nullptr)
-        return;
-
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplAndroid_NewFrame();
-    ImGui::NewFrame();
-
-    renderDemoWindow();
-
-
-    ImGui::Render();
-    glViewport(0, 0, (int) ImGui::GetIO().DisplaySize.x, (int) ImGui::GetIO().DisplaySize.y);
-//    glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
-    glClear(GL_COLOR_BUFFER_BIT);
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-}
 
 extern "C"
 JNIEXPORT jfloatArray JNICALL
@@ -266,7 +231,25 @@ Java_com_xa_JavaImgui_NativeMethod_onSurfaceDestroyed(JNIEnv *env, jclass clazz,
 }
 
 
+// 更新输入文本
+extern "C" JNIEXPORT void JNICALL
+Java_com_xa_JavaImgui_NativeMethod_UpdateInputText(JNIEnv *env, jclass clazz, jstring text) {
+    LOGI("UpdateInputText called with text: %s", env->GetStringUTFChars(text, nullptr));
+    const char* ctext = ConvertJStringToCString(env, text);
+    if (g_Initialized && g_io) {
+        g_io->AddInputCharactersUTF8(ctext);
+    }
+}
 
+// 删除输入文本
+extern "C" JNIEXPORT void JNICALL
+Java_com_xa_JavaImgui_NativeMethod_DeleteInputText(JNIEnv *env, jclass clazz) {
+    if (g_Initialized && g_io) {
+        g_io->AddKeyEvent(ImGuiKey_Backspace, true);
+        usleep(10000);
+        g_io->AddKeyEvent(ImGuiKey_Backspace, false);
+    }
+}
 
 void KeyboardView(){
     JNIEnv *g_Env = nullptr;
@@ -288,34 +271,7 @@ void KeyboardView(){
 }
 
 
-void PollUnicodeChars()
-{
-    JNIEnv *g_Env = nullptr;
-    jint result = g_javaVM->AttachCurrentThread(&g_Env, nullptr);
-    if (result != JNI_OK || g_Env == nullptr) {
-        LOGD("Failed to attach thread or obtain JNIEnv, result: %d", result);
-        return;
-    }
-    // Log classpath
-    //LOGD("Looking for class in thread...");
-    jmethodID pollUnicodeChar = g_Env->GetStaticMethodID(myGLSurfaceViewClass, "pollUnicodeChar", "()I");
-    if (pollUnicodeChar == nullptr) {
-        LOGD("Failed to find method");
-    } else {
-        //LOGD("Method found: %p", pollUnicodeChar);
-        ImGuiIO & io = ImGui::GetIO();
-        jint c;
-        while ((c = g_Env->CallStaticIntMethod(myGLSurfaceViewClass, pollUnicodeChar)) != 0){
-            if (c == 8){
-                io.AddKeyEvent(ImGuiKey_Backspace, true);
-                usleep(1000);
-                io.AddKeyEvent(ImGuiKey_Backspace, false);
-            } else{
-                io.AddInputCharacter(c);
-            }
-        }
-    }
-}
+
 
 char input_text[128] = {};
 
@@ -358,32 +314,51 @@ static void renderDemoWindow() {
 
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate,
                     io.Framerate);
-        ImGui::InputTextWithHint("这是一个输入框","请输入", input_text, IM_ARRAYSIZE(input_text));
+        ImGui::InputTextWithHint("这是一个输入框", "请输入", input_text, IM_ARRAYSIZE(input_text));
 
         ImGui::End();
 
-        {
-            PollUnicodeChars();
+    }
+}
 
-            static bool WantTextInputLast = false;
-            if (io.WantTextInput && !WantTextInputLast) {
-                KeyboardView();
-            } else if (!io.WantTextInput && WantTextInputLast) {
-                KeyboardView();
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_xa_JavaImgui_NativeMethod_onDrawFrame(JNIEnv *env, jclass clazz, jobject gl) {
+    // TODO: implement onDrawFrame()
+
+    if (!g_Initialized || ImGui::GetCurrentContext() == nullptr)
+        return;
+
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplAndroid_NewFrame();
+    ImGui::NewFrame();
+
+    renderDemoWindow();
+
+    {
+        ImGuiIO &io = ImGui::GetIO();
+        static bool WantTextInputLast = false;
+        if (io.WantTextInput && !WantTextInputLast) {
+            JNIEnv *g_Env = nullptr;
+            if (g_javaVM->AttachCurrentThread(&g_Env, nullptr) == JNI_OK && myGLSurfaceViewClass) {
+                g_Env->CallStaticVoidMethod(myGLSurfaceViewClass, g_showInputUIMethod);
             }
-            WantTextInputLast = io.WantTextInput;
+        } else if (!io.WantTextInput && WantTextInputLast) {
+            JNIEnv *g_Env = nullptr;
+            if (g_javaVM->AttachCurrentThread(&g_Env, nullptr) == JNI_OK && myGLSurfaceViewClass) {
+                g_Env->CallStaticVoidMethod(myGLSurfaceViewClass, g_hideInputUIMethod);
+            }
         }
+        WantTextInputLast = io.WantTextInput;
     }
 
-    // 3. Show another simple window.
-//    if (show_another_window) {
-//        ImGui::Begin("Another Window",
-//                     &show_another_window); // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-//        ImGui::Text("Hello from another window!");
-//        if (ImGui::Button("Close Me"))
-//            show_another_window = false;
-//        ImGui::End();
-//    }
+
+    ImGui::Render();
+    glViewport(0, 0, (int) ImGui::GetIO().DisplaySize.x, (int) ImGui::GetIO().DisplaySize.y);
+//    glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
+    glClear(GL_COLOR_BUFFER_BIT);
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
 

@@ -4,10 +4,10 @@ static JavaVM *g_javaVM = nullptr;
 static jclass myGLSurfaceViewClass = nullptr;
 jobject g_ActivityInstance = nullptr;
 jobject g_DexClassLoader = nullptr;
+static ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+static jmethodID g_showInputUIMethod = nullptr;
+static jmethodID g_hideInputUIMethod = nullptr;
 
-extern "C" JNIEXPORT void JNICALL Java_com_xa_JavaImgui_NativeMethod_UpdateInputText(JNIEnv *env, jclass clazz, jstring text);
-
-extern "C" JNIEXPORT void JNICALL Java_com_xa_JavaImgui_NativeMethod_DeleteInputText(JNIEnv *env, jclass clazz);
 
 extern "C" JNIEXPORT void JNICALL Java_com_xa_JavaImgui_NativeMethod_onSurfaceCreated(JNIEnv *env, jclass clazz, jobject surface, jobject gl, jobject config);
 
@@ -20,6 +20,10 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_xa_JavaImgui_NativeMethod_handleT
 extern "C" JNIEXPORT void JNICALL Java_com_xa_JavaImgui_NativeMethod_onSurfaceDestroyed(JNIEnv *env, jclass clazz, jobject surface);
 
 extern "C" JNIEXPORT jfloatArray JNICALL Java_com_xa_JavaImgui_NativeMethod_GetImGuiWindowBounds(JNIEnv *env, jclass clazz);
+
+extern "C" JNIEXPORT void JNICALL Java_com_xa_JavaImgui_NativeMethod_UpdateInputText(JNIEnv *env, jclass clazz, jstring text);
+
+extern "C" JNIEXPORT void JNICALL Java_com_xa_JavaImgui_NativeMethod_DeleteInputText(JNIEnv *env, jclass clazz);
 // ============================================================================
 // 获取 JavaVM - 使用 xdl 的通用多库方案
 // ============================================================================
@@ -539,9 +543,9 @@ bool registerNativeMethods() {
             {"onDrawFrame", "(Ljavax/microedition/khronos/opengles/GL10;)V", (void*)Java_com_xa_JavaImgui_NativeMethod_onDrawFrame},
             {"handleTouch", "(FFI)Z", (void*)Java_com_xa_JavaImgui_NativeMethod_handleTouch},
             {"onSurfaceDestroyed", "(Landroid/view/Surface;)V", (void*)Java_com_xa_JavaImgui_NativeMethod_onSurfaceDestroyed},
+            {"GetImGuiWindowBounds", "()[F", (void*)Java_com_xa_JavaImgui_NativeMethod_GetImGuiWindowBounds},
             {"UpdateInputText", "(Ljava/lang/String;)V", (void*)Java_com_xa_JavaImgui_NativeMethod_UpdateInputText},
             {"DeleteInputText", "()V", (void*)Java_com_xa_JavaImgui_NativeMethod_DeleteInputText},
-            {"GetImGuiWindowBounds", "()[F", (void*)Java_com_xa_JavaImgui_NativeMethod_GetImGuiWindowBounds},
     };
 
     int method_count = sizeof(gles3_methods) / sizeof(gles3_methods[0]);
