@@ -141,21 +141,39 @@ Java_com_xa_JavaImgui_NativeMethod_onSurfaceChanged(JNIEnv *env, jclass clazz, j
 extern "C"
 JNIEXPORT jfloatArray JNICALL
 Java_com_xa_JavaImgui_NativeMethod_GetImGuiWindowBounds(JNIEnv *env, jclass clazz) {
-    LOGI("GetImGuiWindowBounds called");
-    int activeWindowCount = 0;
-    for (int i = 0; i < ImGui::GetCurrentContext()->Windows.Size; ++i) {
-        if (ImGui::GetCurrentContext()->Windows[i]->Active) {
-            activeWindowCount++;
-        }
+    if (!g_Initialized || ImGui::GetCurrentContext() == nullptr) {
+        return env->NewFloatArray(0);
     }
 
-    if (activeWindowCount == 0) {
-        jfloatArray bounds = env->NewFloatArray(0);
-        return bounds;
+    ImGuiContext& g = *GImGui;
+    int validWindowCount = 0;
+
+    // 1. 第一遍遍历：统计真正需要独立代理方块的【根窗口】
+    for (int i = 0; i < g.Windows.Size; ++i) {
+        ImGuiWindow* window = g.Windows[i];
+
+        // 【终极修复：跨线程竞态防抖】！
+        // 只要当前活跃 (Active) 或者上一帧活跃 (WasActive)，都算数！
+        // 完美免疫 Java 异步读取时正好撞上 ImGui 重置状态的零点几毫秒真空期！
+        if (!window->Active && !window->WasActive) continue;
+
+        if (window->Hidden) continue;
+        if (window->Size.x <= 0 || window->Size.y <= 0) continue;
+
+        // 过滤不需要触摸的窗口、子窗口、提示框和调试窗口
+        if (window->Flags & ImGuiWindowFlags_NoInputs) continue;
+        if (window->Flags & ImGuiWindowFlags_ChildWindow) continue;
+        if (strstr(window->Name, "Tooltip") != nullptr) continue;
+        if (strstr(window->Name, "Debug##Default") != nullptr) continue;
+
+        validWindowCount++;
     }
 
-    // 每个窗口4个float值，总共 activeWindowCount * 4 个float
-    int totalFloats = activeWindowCount * 4;
+    if (validWindowCount == 0) {
+        return env->NewFloatArray(0);
+    }
+
+    int totalFloats = validWindowCount * 4;
     jfloatArray result = env->NewFloatArray(totalFloats);
     if (result == nullptr) return nullptr;
 
@@ -163,14 +181,24 @@ Java_com_xa_JavaImgui_NativeMethod_GetImGuiWindowBounds(JNIEnv *env, jclass claz
     if (elements == nullptr) return nullptr;
 
     int index = 0;
-    for (int i = 0; i < ImGui::GetCurrentContext()->Windows.Size; ++i) {
-        ImGuiWindow* window = ImGui::GetCurrentContext()->Windows[i];
-        if (window->Active) {
-            elements[index++] = window->Pos.x;
-            elements[index++] = window->Pos.y;
-            elements[index++] = window->Pos.x + window->Size.x;
-            elements[index++] = window->Pos.y + window->Size.y;
-        }
+
+    // 2. 第二遍遍历：写入坐标
+    for (int i = 0; i < g.Windows.Size; ++i) {
+        ImGuiWindow* window = g.Windows[i];
+
+        // 【条件必须和上面一模一样】
+        if (!window->Active && !window->WasActive) continue;
+        if (window->Hidden) continue;
+        if (window->Size.x <= 0 || window->Size.y <= 0) continue;
+        if (window->Flags & ImGuiWindowFlags_NoInputs) continue;
+        if (window->Flags & ImGuiWindowFlags_ChildWindow) continue;
+        if (strstr(window->Name, "Tooltip") != nullptr) continue;
+        if (strstr(window->Name, "Debug##Default") != nullptr) continue;
+
+        elements[index++] = window->Pos.x;
+        elements[index++] = window->Pos.y;
+        elements[index++] = window->Pos.x + window->Size.x;
+        elements[index++] = window->Pos.y + window->Size.y;
     }
 
     env->ReleaseFloatArrayElements(result, elements, 0);
@@ -183,7 +211,7 @@ Java_com_xa_JavaImgui_NativeMethod_handleTouch(JNIEnv *env, jclass clazz, jfloat
     if (!g_Initialized)
         return JNI_FALSE;
 
-    LOGD("handleTouch: %.2f, %.2f, %d", x, y, action);
+    //LOGD("handleTouch: %.2f, %.2f, %d", x, y, action);
 
 
     ImGuiIO &io = ImGui::GetIO();
